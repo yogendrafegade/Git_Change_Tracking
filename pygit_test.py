@@ -1,98 +1,88 @@
 import pygit2
 import json
 import os
-import shutil
 from Variable import MY_GITHUB_TOKEN, Repo_URL
+
 # =============================
-# CONFIG & AUTH
+# 1. REPO SETUP
 # =============================
 CLONE_PATH = "./temp_pr_analysis"
+callbacks = pygit2.RemoteCallbacks(credentials=pygit2.UserPass(MY_GITHUB_TOKEN, "x-oauth-basic"))
 
-# Cleanup previous runs
 if os.path.exists(CLONE_PATH):
-    shutil.rmtree(CLONE_PATH)
+    repo = pygit2.Repository(CLONE_PATH)
+else:
+    repo = pygit2.clone_repository(Repo_URL, CLONE_PATH, callbacks=callbacks)
 
-callbacks = pygit2.RemoteCallbacks(
-    credentials=pygit2.UserPass(MY_GITHUB_TOKEN, "x-oauth-basic")
-)
-
-# =============================
-# 1. CLONE REPOSITORY
-# =============================
-repo = pygit2.clone_repository(Repo_URL, CLONE_PATH, callbacks=callbacks)
-
-# =============================
-# 2. FIND DYNAMIC PR REF
-# =============================
-# We fetch all remote branches and PR refs
+# Fetch PR refs
 repo.remotes["origin"].fetch(["+refs/pull/*/head:refs/remotes/origin/pull/*"], callbacks=callbacks)
 
-def get_latest_pr_ref(repo):
-    pr_refs = [ref for ref in repo.references if "refs/remotes/origin/pull/" in ref]
-    if not pr_refs:
-        raise Exception("No Pull Requests found in this repository!")
-    # Return the most recent one based on the reference name (number)
-    return sorted(pr_refs, key=lambda x: int(x.split('/')[-1]))[-1]
-
-TARGET_PR_REF = get_latest_pr_ref(repo)
-PR_NUMBER = TARGET_PR_REF.split('/')[-1]
-
 # =============================
-# 3. IDENTIFY BASE (MAIN)
+# 2. CONTENT HELPER
 # =============================
-def find_base_ref(repo):
-    for name in ["main", "master"]:
-        ref_path = f"refs/remotes/origin/{name}"
-        if ref_path in repo.references:
-            return ref_path
-    return "refs/remotes/origin/main"
-
-FROM_REF = find_base_ref(repo)
-TO_REF = TARGET_PR_REF
-
-# =============================
-# 4. COMPARE TREES (BLOBS)
-# =============================
-old_commit = repo.revparse_single(FROM_REF)
-new_commit = repo.revparse_single(TO_REF)
-diff = repo.diff(old_commit.tree, new_commit.tree)
-
-def get_file_content(tree, path):
+def get_raw_content(tree, path):
     try:
         entry = tree[path]
-        blob = repo[entry.id]
-        return blob.data.decode("utf-8", errors="ignore").splitlines()
+        # Returns raw string; json.dumps converts newlines to \n automatically
+        return repo[entry.id].data.decode("utf-8", errors="ignore").strip()
     except KeyError:
-        return []
+        return ""
 
 # =============================
-# 5. GENERATE JSON
+# 3. DATA TRANSFORMATION
 # =============================
-status_map = {
-    pygit2.GIT_DELTA_ADDED: "added",
-    pygit2.GIT_DELTA_DELETED: "deleted",
-    pygit2.GIT_DELTA_MODIFIED: "modified"
-}
+pr_refs = [ref for ref in repo.references if "refs/remotes/origin/pull/" in ref]
+latest_pr_ref = sorted(pr_refs, key=lambda x: int(x.split('/')[-1]))[-1]
+pr_id = latest_pr_ref.split('/')[-1]
 
+old_commit = repo.revparse_single("refs/remotes/origin/main")
+new_commit = repo.revparse_single(latest_pr_ref)
+diff = repo.diff(old_commit.tree, new_commit.tree)
+
+# The Structure: "changes" is an object {}, not a list []
 output = {
-    "changes": [],
+    "changes": {}, 
     "summary": {
-        "comparison_type": "automated_pr_analysis",
-        "pr_id": PR_NUMBER,
-        "base_branch": FROM_REF,
+        "comparison_type": "Mainbranch vs Feature",
+        "pr_id": pr_id,
+        "base_branch": "main",
+        "head_branch": f"Pull Request #{pr_id}",
         "total_files_changed": 0
     }
 }
 
+status_map = {
+    pygit2.GIT_DELTA_ADDED: "added",
+    pygit2.GIT_DELTA_DELETED: "deleted",
+    pygit2.GIT_DELTA_MODIFIED: "modified",
+    pygit2.GIT_DELTA_RENAMED: "renamed"
+}
+
 for patch in diff:
-    file_data = {
-        "filename": patch.delta.new_file.path,
+    filename = patch.delta.new_file.path
+    
+    # Map filename as the KEY in the dictionary
+    output["changes"][filename] = {
         "status": status_map.get(patch.delta.status, "unknown"),
-        "old_content": get_file_content(old_commit.tree, patch.delta.old_file.path),
-        "new_content": get_file_content(new_commit.tree, patch.delta.new_file.path)
+        "old_content": get_raw_content(old_commit.tree, patch.delta.old_file.path),
+        "new_content": get_raw_content(new_commit.tree, patch.delta.new_file.path)
     }
-    output["changes"].append(file_data)
 
 output["summary"]["total_files_changed"] = len(output["changes"])
 
+# =============================
+# 4. OUTPUT (STRICT VALID JSON)
+# =============================
+# Using indent=2 for a clean, scannable look
 print(json.dumps(output, indent=2))
+
+
+parsed = json.loads(json.dumps(output)) 
+CONTENT=parsed["changes"]["Hello.py"]["new_content"] 
+
+print(parsed)
+
+print("Normal Print:")
+
+print(CONTENT)
+print(type(CONTENT))
