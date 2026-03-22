@@ -74,15 +74,17 @@ output["summary"]["total_files_changed"] = len(output["changes"])
 # 4. OUTPUT (STRICT VALID JSON)
 # =============================
 # Using indent=2 for a clean, scannable look
-print(json.dumps(output, indent=2))
+print(json.dumps(output, indent=2,ensure_ascii=False))
 
 
-parsed = json.loads(json.dumps(output)) 
-CONTENT=parsed["changes"]["Hello.py"]["new_content"] 
+# parsed = json.loads(json.dumps(output)) 
+# OLD_CONTENT=parsed["changes"]["Hello.py"]["old_content"]
+# CONTENT=parsed["changes"]["Hello.py"]["new_content"] 
 
-print(parsed)
+# # print(parsed)
 
-print("Normal Print:")
+# print("Normal Print:")
 
-print(CONTENT)
-print(type(CONTENT))
+# print("Old Content:", OLD_CONTENT)
+# print("New Content:", CONTENT)
+# print("Type of New Content:", type(CONTENT))
