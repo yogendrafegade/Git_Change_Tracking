@@ -14,20 +14,16 @@ if os.path.exists(CLONE_PATH):
 else:
     repo = pygit2.clone_repository(Repo_URL, CLONE_PATH, callbacks=callbacks)
 
-# Fetching latest metadata for both PRs and Main
-repo.remotes["origin"].fetch([
-    "+refs/pull/*/head:refs/remotes/origin/pull/*",
-    "+refs/heads/main:refs/remotes/origin/main"
-], callbacks=callbacks)
+# Fetch PR refs
+repo.remotes["origin"].fetch(["+refs/pull/*/head:refs/remotes/origin/pull/*"], callbacks=callbacks)
 
 # =============================
 # 2. CONTENT HELPER
 # =============================
 def get_raw_content(tree, path):
-    if not path:
-        return ""
     try:
         entry = tree[path]
+        # Returns raw string; json.dumps converts newlines to \n automatically
         return repo[entry.id].data.decode("utf-8", errors="ignore").strip()
     except KeyError:
         return ""
@@ -39,16 +35,11 @@ pr_refs = [ref for ref in repo.references if "refs/remotes/origin/pull/" in ref]
 latest_pr_ref = sorted(pr_refs, key=lambda x: int(x.split('/')[-1]))[-1]
 pr_id = latest_pr_ref.split('/')[-1]
 
-# Compare PR Head against the Main branch
-new_commit = repo.revparse_single(latest_pr_ref)
 old_commit = repo.revparse_single("refs/remotes/origin/main")
-
+new_commit = repo.revparse_single(latest_pr_ref)
 diff = repo.diff(old_commit.tree, new_commit.tree)
 
-# ⭐ THE CRITICAL LINE: This enables Rename Detection
-# Even if you change code inside, 20% similarity will keep it as 'renamed'
-diff.find_similar(flags=pygit2.GIT_DIFF_FIND_RENAMES, rename_threshold=20)
-
+# The Structure: "changes" is an object {}, not a list []
 output = {
     "changes": {}, 
     "summary": {
@@ -68,12 +59,9 @@ status_map = {
 }
 
 for patch in diff:
-    # Logic: Pick the correct name for the JSON key
-    if patch.delta.status == pygit2.GIT_DELTA_DELETED:
-        filename = patch.delta.old_file.path
-    else:
-        filename = patch.delta.new_file.path
+    filename = patch.delta.new_file.path
     
+    # Map filename as the KEY in the dictionary
     output["changes"][filename] = {
         "status": status_map.get(patch.delta.status, "unknown"),
         "old_content": get_raw_content(old_commit.tree, patch.delta.old_file.path),
@@ -83,6 +71,18 @@ for patch in diff:
 output["summary"]["total_files_changed"] = len(output["changes"])
 
 # =============================
-# 4. OUTPUT
+# 4. OUTPUT (STRICT VALID JSON)
 # =============================
-print(json.dumps(output, indent=2, ensure_ascii=False))
+# Using indent=2 for a clean, scannable look
+print(json.dumps(output, indent=2))
+
+
+parsed = json.loads(json.dumps(output)) 
+CONTENT=parsed["changes"]["Hello.py"]["new_content"] 
+
+print(parsed)
+
+print("Normal Print:")
+
+print(CONTENT)
+print(type(CONTENT))
