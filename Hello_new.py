@@ -1,4 +1,4 @@
 # This is simple program to show how print statement works
 
 print('Hello Python World')
-print('Welcome to Python programming!')
+print('Welcome toPython programming!')
