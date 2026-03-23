@@ -26,6 +26,13 @@ repo.remotes["origin"].fetch([
 def get_raw_content(tree, path):
     if not path:
         return ""
+    # Define which files we actually want to read as text
+    TEXT_EXTENSIONS = ('.py', '.sql', '.txt', '.md', '.json', '.html', '.css')
+    
+    # Check if the file is a text-based format
+    if not path.lower().endswith(TEXT_EXTENSIONS):
+        return "[Binary/Non-Text Content Hidden]"
+
     try:
         entry = tree[path]
         return repo[entry.id].data.decode("utf-8", errors="ignore").strip()
@@ -86,3 +93,15 @@ output["summary"]["total_files_changed"] = len(output["changes"])
 # 4. OUTPUT
 # =============================
 print(json.dumps(output, indent=2, ensure_ascii=False))
+
+parsed = json.loads(json.dumps(output)) 
+OLD_CONTENT=parsed["changes"]["Empty.txt"]["old_content"]
+CONTENT=parsed["changes"]["Empty.txt"]["new_content"] 
+
+# print(parsed)
+
+print("Normal Print:")
+
+print("Old Content:", OLD_CONTENT)
+print("New Content:", CONTENT)
+print("Type of New Content:", type(CONTENT))

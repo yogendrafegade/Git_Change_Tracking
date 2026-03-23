@@ -1,0 +1,17 @@
+# 🔐 Security & Credentials
+# This prevents your GitHub Token from being leaked
+Variable.py
+
+# 📂 Script Workspace
+# This folder is created by your script for analysis; no need to track it
+temp_pr_analysis/
+
+# 🐍 Python "Junk"
+# Generated automatically when you run the script
+__pycache__/
+*.pyc
+
+# 💻 System Files
+.DS_Store
+Thumbs.db
+desktop.ini
