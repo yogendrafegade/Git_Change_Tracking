@@ -1,1 +1,1 @@
-select first_name, last_name, salary, department_id, job_id from employees e;
+select first_name as fname, last_name as lname, salary, department_id, job_id from employees e;
