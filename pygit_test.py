@@ -2,6 +2,7 @@ import pygit2
 import json
 import os
 from Variable import MY_GITHUB_TOKEN, Repo_URL
+from sql_glot import analyze_sql
 
 # =============================
 # 1. REPO SETUP
@@ -27,7 +28,7 @@ def get_raw_content(tree, path):
     if not path:
         return ""
     # Define which files we actually want to read as text
-    TEXT_EXTENSIONS = ('.py', '.sql', '.txt', '.md', '.json', '.html', '.css')
+    TEXT_EXTENSIONS = ('.py', '.sql', '.txt', '.md', '.json', '.html', '.css','.csv')
     
     # Check if the file is a text-based format
     if not path.lower().endswith(TEXT_EXTENSIONS):
@@ -38,6 +39,7 @@ def get_raw_content(tree, path):
         return repo[entry.id].data.decode("utf-8", errors="ignore").strip()
     except KeyError:
         return ""
+
 
 # =============================
 # 3. DATA TRANSFORMATION
@@ -52,7 +54,6 @@ old_commit = repo.revparse_single("refs/remotes/origin/main")
 
 diff = repo.diff(old_commit.tree, new_commit.tree)
 
-# ⭐ THE CRITICAL LINE: This enables Rename Detection
 # Even if you change code inside, 20% similarity will keep it as 'renamed'
 diff.find_similar(flags=pygit2.GIT_DIFF_FIND_RENAMES, rename_threshold=20)
 
@@ -81,10 +82,20 @@ for patch in diff:
     else:
         filename = patch.delta.new_file.path
     
+    old_raw = get_raw_content(old_commit.tree, patch.delta.old_file.path)
+    new_raw = get_raw_content(new_commit.tree, patch.delta.new_file.path)
+
+    if filename.lower().endswith(".sql"):
+        old_content = analyze_sql(old_raw)
+        new_content = analyze_sql(new_raw)
+    else:
+        old_content = old_raw
+        new_content = new_raw
+
     output["changes"][filename] = {
         "status": status_map.get(patch.delta.status, "unknown"),
-        "old_content": get_raw_content(old_commit.tree, patch.delta.old_file.path),
-        "new_content": get_raw_content(new_commit.tree, patch.delta.new_file.path)
+        "old_content": old_content,
+        "new_content": new_content
     }
 
 output["summary"]["total_files_changed"] = len(output["changes"])
@@ -94,14 +105,14 @@ output["summary"]["total_files_changed"] = len(output["changes"])
 # =============================
 print(json.dumps(output, indent=2, ensure_ascii=False))
 
-parsed = json.loads(json.dumps(output)) 
-OLD_CONTENT=parsed["changes"]["Empty.txt"]["old_content"]
-CONTENT=parsed["changes"]["Empty.txt"]["new_content"] 
+# parsed = json.loads(json.dumps(output)) 
+# OLD_CONTENT=parsed["changes"]["Hello_new.py"]["old_content"]
+# CONTENT=parsed["changes"]["Hello_new.py"]["new_content"] 
 
-# print(parsed)
+# # print(parsed)
 
-print("Normal Print:")
+# print("Normal Print:")
 
-print("Old Content:", OLD_CONTENT)
-print("New Content:", CONTENT)
-print("Type of New Content:", type(CONTENT))
+# print("Old Content:\n", json.dumps(OLD_CONTENT, indent=2) if isinstance(OLD_CONTENT, dict) else OLD_CONTENT)
+# print("New Content:\n", json.dumps(CONTENT, indent=2) if isinstance(CONTENT, dict) else CONTENT)
+# print("Type of New Content:", type(CONTENT))
